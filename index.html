@@ -213,7 +213,7 @@
       <div class="greet"><div class="greet-hi" id="saludo">Hola</div><div class="greet-sub" id="saludoSub"></div></div>
       <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
         <button class="iconbtn" id="temaBtn" onclick="toggleTema()" title="Cambiar tema" aria-label="Tema"></button>
-        <button class="iconbtn" onclick="modalEmpresa()" title="Configuración de empresa" aria-label="Empresa">
+        <button class="iconbtn" id="btnEmpresa" onclick="modalEmpresa()" title="Configuración de empresa" aria-label="Empresa">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1"/></svg></button>
         <button class="iconbtn" onclick="cerrarSesion()" title="Cerrar sesión" aria-label="Salir">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></button>
@@ -274,10 +274,47 @@ async function boot(){
 function mostrarLogin(){ $('app').classList.add('hidden'); $('login').classList.remove('hidden'); }
 async function entrarApp(session){
   $('login').classList.add('hidden'); $('app').classList.remove('hidden');
-  buildSidebar(); aplicarTema(); saludar(session.user?.email||'');
+  aplicarTema(); saludar(session.user?.email||'');
+  await cargarPerfil(session.user);   // define state.roles y state.allowed
+  aplicarPermisos();
+  buildSidebar();
+  if(!puede(state.view)) state.view=primeraVista();
   $('view').innerHTML=`<div class="card empty"><span class="spinner"></span> Cargando datos…</div>`;
   await cargarBase();          // catálogos + ajustes (se usan en varios módulos)
   go(state.view);
+}
+/* ---- PERMISOS POR ROL ---- */
+const ROLE_VIEWS={
+  'Administrador':'*', 'Gerente':'*',
+  'Vendedor':['dashboard','pedidos','clientes','cotizaciones','precios'],
+  'Cajera':['dashboard','pedidos','cobrar','clientes'],
+  'Chofer':['pedidos'], 'Ayudante':['pedidos'],
+  'Almacén':['dashboard','productos','insumos','compras','proveedores'],
+  'Finanzas':['dashboard','gastos','cobrar','pagar','resultados','dgii','precios']
+};
+function computeAllowed(roles){
+  if(roles.some(r=>ROLE_VIEWS[r]==='*')) return '*';
+  const s=new Set();
+  roles.forEach(r=>(ROLE_VIEWS[r]||[]).forEach(v=>s.add(v)));
+  if(!s.size){ s.add('dashboard'); s.add('pedidos'); }
+  return [...s];
+}
+function puede(view){ return state.allowed==='*' || (state.allowed||[]).includes(view); }
+function esAdmin(){ return (state.roles||[]).some(r=>r==='Administrador'||r==='Gerente'); }
+function primeraVista(){
+  for(const [,items] of NAV) for(const [k] of items) if(puede(k)) return k;
+  return 'pedidos';
+}
+async function cargarPerfil(user){
+  state.usuarioId=user?.id; state.email=user?.email||'';
+  let roles=[];
+  try{ const { data } = await sb.from('perfiles').select('roles,nombre').eq('id',user.id).single();
+       if(data && Array.isArray(data.roles)) roles=data.roles; }catch(e){}
+  if(!roles.length) roles=['Administrador'];   // sin perfil definido = acceso total (evita bloquear al dueño)
+  state.roles=roles; state.allowed=computeAllowed(roles);
+}
+function aplicarPermisos(){
+  const be=$('btnEmpresa'); if(be) be.style.display = esAdmin()?'':'none';
 }
 function saludar(email){
   const h=new Date().getHours();
@@ -321,8 +358,12 @@ const NAV=[
 ];
 const TITULOS={}; NAV.forEach(([,items])=>items.forEach(([k,l])=>TITULOS[k]=l));
 function buildSidebar(){
-  $('sidenav').innerHTML=NAV.map(([g,items])=>`<div class="nav-group"><div class="gl">${g}</div>
-    ${items.map(([k,l,ic])=>`<button class="navlink" data-view="${k}" onclick="go('${k}')"><span class="ic">${ico(ic)}</span>${l}</button>`).join('')}</div>`).join('');
+  $('sidenav').innerHTML=NAV.map(([g,items])=>{
+    const vis=items.filter(([k])=>puede(k));
+    if(!vis.length) return '';
+    return `<div class="nav-group"><div class="gl">${g}</div>
+      ${vis.map(([k,l,ic])=>`<button class="navlink" data-view="${k}" onclick="go('${k}')"><span class="ic">${ico(ic)}</span>${l}</button>`).join('')}</div>`;
+  }).join('');
 }
 function toggleSidebar(force){
   const sb_=$('sidebar'), bd=$('backdrop');
@@ -370,6 +411,7 @@ const prodById=id=>state.productos.find(p=>p.id===id)||{nombre:'—',unidad:'und
 const provById=id=>state.proveedores.find(p=>p.id===id)||{nombre:'—'};
 
 function go(view){
+  if(!puede(view)){ toast('No tienes acceso a esa sección','warn'); view=primeraVista(); }
   state.view=view;
   document.querySelectorAll('.navlink').forEach(b=>b.classList.toggle('on', b.dataset.view===view));
   const pt=$('pagetitle'); if(pt) pt.textContent=TITULOS[view]||'';
@@ -769,9 +811,10 @@ function renderDashboard(){
     </div>
     <div class="card" style="margin-top:14px"><h3 class="sec">Accesos rápidos</h3>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn btn-primary" onclick="go('pedidos')">+ Nuevo pedido</button>
-        <button class="btn btn-ghost" onclick="go('cobrar')">Cuentas por cobrar</button>
-        <button class="btn btn-ghost" onclick="go('inteligencia')">Inteligencia de precios</button>
+        ${puede('pedidos')?`<button class="btn btn-primary" onclick="go('pedidos')">+ Nuevo pedido</button>`:''}
+        ${puede('cobrar')?`<button class="btn btn-ghost" onclick="go('cobrar')">Cuentas por cobrar</button>`:''}
+        ${puede('inteligencia')?`<button class="btn btn-ghost" onclick="go('inteligencia')">Inteligencia de precios</button>`:''}
+        ${puede('cotizaciones')?`<button class="btn btn-ghost" onclick="go('cotizaciones')">Cotizaciones</button>`:''}
       </div></div>`;
 }
 
@@ -1574,7 +1617,7 @@ async function guardarMercado(){ const precio=N($('mk_precio').value); if(!preci
 }
 
 /* ================== USUARIOS ================== */
-const ROLES=['Administrador','Gerente','Vendedor','Almacén','Chofer','Finanzas'];
+const ROLES=['Administrador','Gerente','Vendedor','Cajera','Almacén','Chofer','Ayudante','Finanzas'];
 async function cargarUsuarios(){ const {data,error}=await sb.from('perfiles').select('*').order('nombre'); if(error){$('view').innerHTML=err(error);return;} state.usuarios=data||[]; render(); }
 function renderUsuarios(){
   const rb=r=>({Administrador:'b-ok',Vendedor:'b-info',Finanzas:'b-warn',Gerente:'b-info'}[r]||'b-neutral');
