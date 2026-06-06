@@ -904,16 +904,78 @@ function openDocs(id){
       <button id="dt-Conduce" onclick="setDoc('Conduce')">Conduce</button>
       <button id="dt-Recibo" onclick="setDoc('Recibo')">Recibo</button>
     </div>
+    <div id="ncfBar" style="margin-bottom:12px"></div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <button class="btn btn-ghost btn-sm" onclick="docPrint()">🖨️ Imprimir</button>
-      <button class="btn btn-ghost btn-sm" onclick="docDownload()">⬇️ Descargar</button>
+      <button class="btn btn-primary btn-sm" onclick="docPDF()">Descargar PDF</button>
+      <button class="btn btn-ghost btn-sm" onclick="docPrint()">Imprimir</button>
+      <button class="btn btn-ghost btn-sm" onclick="docWhats()">WhatsApp</button>
+      <button class="btn btn-ghost btn-sm" onclick="docMail()">Correo</button>
     </div>
-    <iframe id="docFrame" style="width:100%;height:60vh;min-height:380px;border:1px solid var(--border);border-radius:12px;background:#fff"></iframe>`,'');
-  // ensанchar modal
+    <iframe id="docFrame" style="width:100%;height:58vh;min-height:340px;border:1px solid var(--border);border-radius:12px;background:#fff"></iframe>`,'');
   document.querySelector('#overlay .modal').style.maxWidth='820px';
-  renderDoc();
+  setDoc('Factura');
 }
-function setDoc(t){ docState.tipo=t; ['Factura','Conduce','Recibo'].forEach(x=>$('dt-'+x)?.classList.toggle('on',x===t)); renderDoc(); }
+function setDoc(t){ docState.tipo=t; ['Factura','Conduce','Recibo'].forEach(x=>$('dt-'+x)?.classList.toggle('on',x===t)); pintarNcfBar(); renderDoc(); }
+function pintarNcfBar(){
+  const bar=$('ncfBar'); if(!bar) return;
+  const p=pedidoActual();
+  if(docState.tipo!=='Factura'){ bar.innerHTML=''; return; }
+  if(p.ncf){ bar.innerHTML=`<div class="note" style="margin:0">Comprobante fiscal: <b>${esc(p.ncf)}</b> (${esc(p.ncf_tipo||'')})</div>`; return; }
+  bar.innerHTML=`<div class="note" style="margin:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    Sin NCF asignado.
+    <select id="ncfSel" style="width:auto;padding:6px 8px"><option value="B02">B02 · Consumo</option><option value="B01">B01 · Crédito Fiscal</option></select>
+    <button class="btn btn-primary btn-sm" onclick="asignarNCFpedido()">Asignar NCF</button></div>`;
+}
+async function asignarNCFpedido(){
+  const p=pedidoActual(); const tipo=$('ncfSel').value;
+  const ncf=await asignarNCF(tipo);
+  if(!ncf){ toast('No hay secuencia '+tipo+' configurada','bad'); return; }
+  const { error } = await sb.from('pedidos').update({ ncf, ncf_tipo:tipo }).eq('id',p.id);
+  if(error){ toast('Error: '+error.message,'bad'); return; }
+  p.ncf=ncf; p.ncf_tipo=tipo;            // refleja en memoria
+  toast('NCF asignado: '+ncf+' ✓'); pintarNcfBar(); renderDoc();
+}
+function pedidoActual(){ return state.pedidos.find(p=>p.id===docState.id); }
+function renderDoc(){ const f=$('docFrame'),p=pedidoActual(); if(f&&p) f.srcdoc=docHTML(p,docState.tipo); }
+function docFile(){ const p=pedidoActual(); return `${docState.tipo}_${p.numero||p.id}`; }
+function docPrint(){ imprimirHTML(docHTML(pedidoActual(),docState.tipo)); }
+function docPDF(){ descargarPDF(docHTML(pedidoActual(),docState.tipo), docFile()+'.pdf'); }
+function docTextoResumen(){ const p=pedidoActual(); const cli=p.clientes||clienteById(p.cliente_id)||{}; const M=n=>'RD$'+N(n).toLocaleString('es-DO');
+  return `*${docState.tipo} #${p.numero||p.id} · Frescosso*\nCliente: ${cli.nombre||''}\n${p.ncf?('NCF: '+p.ncf+'\n'):''}Total: ${M(p.total)}\nFecha: ${fechaCorta(p.fecha)}`; }
+function docWhats(){ const p=pedidoActual(); const cli=p.clientes||clienteById(p.cliente_id)||{}; const tel=(cli.tel||'').replace(/\D/g,''); window.open(`https://wa.me/${tel?('1'+tel):''}?text=`+encodeURIComponent(docTextoResumen()+'\n\n(Adjunta el PDF que descargaste.)'),'_blank'); }
+function docMail(){ window.open(`mailto:?subject=`+encodeURIComponent(`${docState.tipo} · Frescosso`)+`&body=`+encodeURIComponent(docTextoResumen()+'\n\n(Adjunta el PDF que descargaste con el botón Descargar PDF.)')); }
+
+/* ===== Impresión y PDF confiables (sirven en iPhone y PC) ===== */
+function imprimirHTML(html){
+  const f=document.createElement('iframe');
+  f.style.cssText='position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0';
+  document.body.appendChild(f);
+  const d=f.contentWindow.document; d.open(); d.write(html); d.close();
+  setTimeout(()=>{ try{ f.contentWindow.focus(); f.contentWindow.print(); }catch(e){ toast('Tu navegador bloqueó la impresión','warn'); }
+    setTimeout(()=>f.remove(), 2000); }, 450);
+}
+function cargarHtml2pdf(){
+  return new Promise((res,rej)=>{
+    if(window.html2pdf) return res();
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    s.onload=()=>res(); s.onerror=()=>rej(new Error('cdn'));
+    document.head.appendChild(s);
+  });
+}
+async function descargarPDF(html, filename){
+  toast('Generando PDF…');
+  try{
+    await cargarHtml2pdf();
+    await html2pdf().set({ margin:6, filename, image:{type:'jpeg',quality:0.96},
+      html2canvas:{scale:2,useCORS:true}, jsPDF:{unit:'mm',format:'a4',orientation:'portrait'} })
+      .from(html,'string').save();
+    toast('PDF descargado ✓');
+  }catch(e){
+    toast('Abro la impresión: elige "Guardar en PDF"','warn');
+    imprimirHTML(html);
+  }
+}
 function docHTML(p,tipo){
   const cli=p.clientes||clienteById(p.cliente_id)||{}; 
   const lineas=(p.pedido_lineas||[]).map(l=>{const pr=prodById(l.producto_id);return {n:pr.nombre,u:pr.unidad,c:N(l.cantidad),pu:N(l.precio_unitario),imp:N(l.cantidad)*N(l.precio_unitario)};});
@@ -937,16 +999,25 @@ function docHTML(p,tipo){
         <div style="display:flex;justify-content:space-between;border-top:2px solid #15231c;margin-top:4px;padding-top:8px;font-weight:800;color:#018837;font-size:16px"><span>TOTAL</span><span>${M(total)}</span></div>
       </div>`;
   }
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
     *{box-sizing:border-box;margin:0;padding:0;font-family:Montserrat,Arial,sans-serif}body{padding:30px;color:#15231c;font-size:13px}
-    .top{display:flex;justify-content:space-between;border-bottom:3px solid #018837;padding-bottom:14px;margin-bottom:16px}
+    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;border-bottom:3px solid #018837;padding-bottom:14px;margin-bottom:16px}
+    .top img{height:42px;flex:0 0 auto}
     .emp{text-align:right;font-size:11px;color:#52615a}.emp b{color:#15231c;font-size:13px}
     h1{font-size:17px;color:#018837;margin-bottom:14px}
     .cli{background:#f4f7f4;border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12px}
-    table{width:100%;border-collapse:collapse;margin-bottom:8px}th{background:#018837;color:#fff;text-align:left;padding:8px;font-size:11px}td{padding:8px;border-bottom:1px solid #eee}.r{text-align:right}
-    .firmas{margin-top:70px;display:flex;justify-content:space-between}.firmas div{width:42%;text-align:center;border-top:1px solid #999;padding-top:6px;font-size:11px;color:#52615a}
+    table{width:100%;border-collapse:collapse;margin-bottom:8px;table-layout:auto}th{background:#018837;color:#fff;text-align:left;padding:8px;font-size:11px}td{padding:8px;border-bottom:1px solid #eee;font-size:12px}.r{text-align:right;white-space:nowrap}
+    .tot{margin-left:auto;width:260px;max-width:100%;font-size:13px;margin-top:12px}
+    .tot .ln{display:flex;justify-content:space-between;padding:4px 0}
+    .firmas{margin-top:70px;display:flex;justify-content:space-between;gap:20px}.firmas div{flex:1;text-align:center;border-top:1px solid #999;padding-top:6px;font-size:11px;color:#52615a}
+    @media(max-width:560px){
+      body{padding:16px}
+      .top{flex-direction:column;gap:10px}.emp{text-align:left}
+      h1{font-size:15px}th{font-size:10px;padding:6px 5px}td{font-size:11px;padding:6px 5px}
+      .tot{width:100%}.firmas{margin-top:48px;flex-direction:column;gap:34px}
+    }
   </style></head><body>
-    <div class="top"><img src="${LOGO}" style="height:42px" alt="Frescosso">
+    <div class="top"><img src="${LOGO}" alt="Frescosso">
       <div class="emp"><b>${esc(AJ.empresa.nombre)}</b><br>RNC: ${esc(AJ.empresa.rnc)}<br>${esc(AJ.empresa.dir)}<br>Tel: ${esc(AJ.empresa.tel)}${AJ.empresa.mail?` · ${esc(AJ.empresa.mail)}`:''}</div></div>
     <h1>${titulo} · #${p.numero||p.id}</h1>
     ${tipo==='Factura'&&p.ncf?`<div style="font-size:12px;margin:-8px 0 12px;color:#52615a">NCF: <b>${esc(p.ncf)}</b> (${esc(p.ncf_tipo||'')})</div>`:''}
@@ -955,10 +1026,6 @@ function docHTML(p,tipo){
     <p style="margin-top:24px;text-align:center;font-size:11px;color:#8a9890">¡Gracias por su compra! · Frescosso</p>
   </body></html>`;
 }
-function pedidoActual(){ return state.pedidos.find(p=>p.id===docState.id); }
-function renderDoc(){ const f=$('docFrame'),p=pedidoActual(); if(f&&p) f.srcdoc=docHTML(p,docState.tipo); }
-function docPrint(){ const w=window.open('','_blank'); if(!w){toast('Permite ventanas emergentes','warn');return;} w.document.write(docHTML(pedidoActual(),docState.tipo)); w.document.close(); w.onload=()=>{w.focus();w.print();}; }
-function docDownload(){ const p=pedidoActual(); const blob=new Blob([docHTML(p,docState.tipo)],{type:'text/html'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=`${docState.tipo}_${p.numero||p.id}.html`; a.click(); toast('Documento descargado ✓'); }
 
 /* ================== COMPRAS ================== */
 async function cargarCompras(){
@@ -1241,8 +1308,8 @@ function openRecibo(id){
   reciboId=id;
   openModal('Recibo de pago',`
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <button class="btn btn-ghost btn-sm" onclick="reciboPrint()">🖨️ Imprimir</button>
-      <button class="btn btn-ghost btn-sm" onclick="reciboDownload()">⬇️ Descargar</button>
+      <button class="btn btn-primary btn-sm" onclick="reciboPDF()">Descargar PDF</button>
+      <button class="btn btn-ghost btn-sm" onclick="reciboPrint()">Imprimir</button>
       <button class="btn btn-ghost btn-sm" onclick="reciboWhats()">WhatsApp</button>
       <button class="btn btn-ghost btn-sm" onclick="reciboMail()">Correo</button>
     </div>
@@ -1255,14 +1322,16 @@ function reciboPagoHTML(){
   const p=pagoActual(); const c=p.clientes||clienteById(p.cliente_id)||{};
   const M=n=>'RD$'+N(n).toLocaleString('es-DO',{minimumFractionDigits:2,maximumFractionDigits:2});
   const detalle=[p.metodo, p.banco, p.referencia?('Ref: '+p.referencia):''].filter(Boolean).join(' · ');
-  return `<!doctype html><html><head><meta charset="utf-8"><style>
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
     *{box-sizing:border-box;margin:0;padding:0;font-family:Montserrat,Arial,sans-serif}body{padding:30px;color:#15231c;font-size:13px}
-    .top{display:flex;justify-content:space-between;border-bottom:3px solid #018837;padding-bottom:14px;margin-bottom:18px}
+    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;border-bottom:3px solid #018837;padding-bottom:14px;margin-bottom:18px}
+    .top img{height:40px;flex:0 0 auto}
     .emp{text-align:right;font-size:11px;color:#52615a}.emp b{color:#15231c;font-size:13px}
     h1{font-size:17px;color:#018837;margin-bottom:14px}.box{background:#f4f7f4;border-radius:10px;padding:16px;font-size:15px;line-height:1.7}
-    .firma{margin-top:50px;display:flex;justify-content:space-between}.firma div{width:45%;text-align:center;border-top:1px solid #999;padding-top:6px;font-size:11px;color:#52615a}
+    .firma{margin-top:50px;display:flex;justify-content:space-between;gap:20px}.firma div{flex:1;text-align:center;border-top:1px solid #999;padding-top:6px;font-size:11px;color:#52615a}
+    @media(max-width:560px){body{padding:16px}.top{flex-direction:column;gap:10px}.emp{text-align:left}.box{font-size:14px}.firma{flex-direction:column;gap:30px;margin-top:36px}}
   </style></head><body>
-    <div class="top"><img src="${LOGO}" style="height:40px"><div class="emp"><b>${esc(AJ.empresa.nombre)}</b><br>RNC: ${esc(AJ.empresa.rnc)}<br>${esc(AJ.empresa.dir)}<br>Tel: ${esc(AJ.empresa.tel)}</div></div>
+    <div class="top"><img src="${LOGO}"><div class="emp"><b>${esc(AJ.empresa.nombre)}</b><br>RNC: ${esc(AJ.empresa.rnc)}<br>${esc(AJ.empresa.dir)}<br>Tel: ${esc(AJ.empresa.tel)}</div></div>
     <h1>RECIBO DE PAGO · #${p.id}</h1>
     <div class="box">Recibimos de <b>${esc(c.nombre||'')}</b><br>la suma de <b>${M(p.monto)}</b><br>
       por concepto de: ${esc(p.nota||'abono a cuenta')}<br>
@@ -1271,12 +1340,12 @@ function reciboPagoHTML(){
     <p style="margin-top:24px;text-align:center;font-size:11px;color:#8a9890">Gracias por su pago · Frescosso</p>
   </body></html>`;
 }
-function reciboPrint(){ const w=window.open('','_blank'); if(!w){toast('Permite ventanas emergentes','warn');return;} w.document.write(reciboPagoHTML()); w.document.close(); w.onload=()=>{w.focus();w.print();}; }
-function reciboDownload(){ const p=pagoActual(); const b=new Blob([reciboPagoHTML()],{type:'text/html'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=`Recibo_${p.id}.html`; a.click(); toast('Recibo descargado ✓'); }
+function reciboPrint(){ imprimirHTML(reciboPagoHTML()); }
+function reciboPDF(){ const p=pagoActual(); descargarPDF(reciboPagoHTML(), `Recibo_${p.id}.pdf`); }
 function reciboTexto(){ const p=pagoActual(); const c=p.clientes||clienteById(p.cliente_id)||{}; const M=n=>'RD$'+N(n).toLocaleString('es-DO'); 
   return `*Recibo de pago · Frescosso*\nRecibimos de ${c.nombre||''} la suma de ${M(p.monto)}.\nConcepto: ${p.nota||'abono a cuenta'}\nForma: ${[p.metodo,p.banco,p.referencia].filter(Boolean).join(' · ')}\nFecha: ${fechaCorta(p.fecha)}\n¡Gracias por su pago!`; }
 function reciboWhats(){ const p=pagoActual(); const c=p.clientes||clienteById(p.cliente_id)||{}; const tel=(c.tel||'').replace(/\D/g,''); window.open(`https://wa.me/${tel?('1'+tel):''}?text=`+encodeURIComponent(reciboTexto()),'_blank'); }
-function reciboMail(){ const p=pagoActual(); window.open(`mailto:?subject=`+encodeURIComponent('Recibo de pago · Frescosso')+`&body=`+encodeURIComponent(reciboTexto()+'\n\n(Adjunta el PDF que descargaste con el botón Descargar.)')); }
+function reciboMail(){ const p=pagoActual(); window.open(`mailto:?subject=`+encodeURIComponent('Recibo de pago · Frescosso')+`&body=`+encodeURIComponent(reciboTexto()+'\n\n(Adjunta el PDF que descargaste con el botón Descargar PDF.)')); }
 
 /* ================== CUENTAS POR PAGAR ================== */
 function renderPagar(){
