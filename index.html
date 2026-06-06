@@ -800,14 +800,14 @@ function renderDashboard(){
   return `${pageH('Inicio','Resumen del negocio · datos en vivo de Supabase')}
     <div class="kpis">
       ${k('Ventas registradas',RD(ventas),ico('gasto'),state.pedidos.length+' pedidos','up')}
-      ${k('Gastos',RD(gastos),ico('pagar'),'',  '')}
-      ${k('Por cobrar',RD(cxc),ico('cobrar'),cxc>0?'pendiente de clientes':'al día',cxc>0?'down':'up')}
+      ${puede('gastos')?k('Gastos',RD(gastos),ico('pagar'),'',  ''):''}
+      ${puede('cobrar')?k('Por cobrar',RD(cxc),ico('cobrar'),cxc>0?'pendiente de clientes':'al día',cxc>0?'down':'up'):''}
       ${k('Clientes',state.clientes.length,ico('clientes'),'activos','')}
       ${k('Productos',state.productos.length,ico('producto'),low?`${low} bajo mínimo`:'stock OK',low?'down':'up')}
     </div>
     <div class="grid2">
       <div class="card"><h3 class="sec">Ventas por día</h3><div class="bars">${barras}</div></div>
-      <div class="card"><h3 class="sec">Gastos por categoría</h3>${hbars}</div>
+      ${puede('gastos')?`<div class="card"><h3 class="sec">Gastos por categoría</h3>${hbars}</div>`:''}
     </div>
     <div class="card" style="margin-top:14px"><h3 class="sec">Accesos rápidos</h3>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -1417,8 +1417,8 @@ function renderPagar(){
 /* ================== ESTADO DE RESULTADOS ================== */
 async function cargarFinanzas(){
   const [ped,gas]=await Promise.all([
-    sb.from('pedidos').select('subtotal,estado,pedido_lineas(producto_id,cantidad)').order('id'),
-    sb.from('gastos').select('categoria,monto')
+    sb.from('pedidos').select('fecha,subtotal,estado,pedido_lineas(producto_id,cantidad)').order('id'),
+    sb.from('gastos').select('categoria,monto').order('id',{ascending:false})
   ]);
   state.pedidos=ped.data||[]; state.gastos=gas.data||[]; render();
 }
@@ -1427,19 +1427,44 @@ function renderResultados(){
   const ventas=act.reduce((a,p)=>a+N(p.subtotal),0);
   const costo=act.reduce((a,p)=>a+(p.pedido_lineas||[]).reduce((s,l)=>s+N(prodById(l.producto_id).costo)*N(l.cantidad),0),0);
   const bruta=ventas-costo, gastos=state.gastos.reduce((a,g)=>a+N(g.monto),0), neta=bruta-gastos;
-  const porCat={}; state.gastos.forEach(g=>porCat[g.categoria]=(porCat[g.categoria]||0)+N(g.monto));
+  const margen=ventas>0?Math.round(neta/ventas*1000)/10:0;
   const row=(l,v,st)=>`<div class="legend-row"><span class="${st||''}">${l}</span><span class="${st||''}">${RD(v)}</span></div>`;
+  // ventas por mes (últimos 6)
+  const porMes={}; act.forEach(p=>{const m=(p.fecha||'').slice(0,7); if(m) porMes[m]=(porMes[m]||0)+N(p.subtotal);});
+  const meses=Object.keys(porMes).sort().slice(-6);
+  const maxM=Math.max(1,...meses.map(m=>porMes[m]));
+  const nm=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  const barras=meses.length?meses.map(m=>`<div class="bar-col"><div class="bar" style="height:${Math.max(3,porMes[m]/maxM*100)}%" title="${RD(porMes[m])}"></div><div class="bar-lbl">${nm[+m.slice(5,7)-1]||m.slice(5)}</div></div>`).join(''):'<div class="empty" style="margin:auto">Sin ventas aún</div>';
+  // composición del resultado (proporciones de ventas)
+  const seg=(v,col)=>ventas>0&&v>0?`<div style="width:${Math.max(0,v/ventas*100)}%;background:${col}"></div>`:'';
+  const comp = ventas>0 ? `<div style="display:flex;height:16px;border-radius:8px;overflow:hidden;background:var(--surface2)">
+      ${seg(costo,'#2f73e0')}${seg(gastos,'var(--warn)')}${seg(Math.max(0,neta),'var(--green)')}</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--muted)">
+      <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:#2f73e0;margin-right:5px"></span>Costo ${ventas?Math.round(costo/ventas*100):0}%</span>
+      <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--warn);margin-right:5px"></span>Gastos ${ventas?Math.round(gastos/ventas*100):0}%</span>
+      <span><span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--green);margin-right:5px"></span>Ganancia ${margen}%</span>
+    </div>` : '<div class="empty">Sin ventas para analizar</div>';
+  // gastos por categoría (barras)
+  const porCat={}; state.gastos.forEach(g=>porCat[g.categoria||'Otros']=(porCat[g.categoria||'Otros']||0)+N(g.monto));
+  const cats=Object.entries(porCat).sort((a,b)=>b[1]-a[1]);
+  const maxC=Math.max(1,...cats.map(c=>c[1]));
+  const ghbars=cats.length?cats.map(([c,v])=>`<div class="hbar-row"><span class="nm">${esc(c)}</span><div class="hbar-track"><div class="hbar-fill" style="width:${v/maxC*100}%"></div></div><span class="hbar-val">${RD(v)}</span></div>`).join(''):'<div class="empty">Sin gastos</div>';
   return `${pageH('Estado de resultados','Ganancia o pérdida del período · calculado en vivo','')}
     <div class="kpis">
-      <div class="card kpi"><div class="kl">Ventas</div><div class="kv">${RD(ventas)}</div></div>
-      <div class="card kpi"><div class="kl">Ganancia bruta</div><div class="kv">${RD(bruta)}</div></div>
-      <div class="card kpi"><div class="kl">Resultado neto</div><div class="kv" style="color:${neta>=0?'var(--green)':'var(--bad)'}">${RD(neta)}</div><div class="kd">${neta>=0?'Ganancia':'Pérdida'}</div></div>
+      <div class="card kpi"><div class="ki">${ico('gasto')}</div><div class="kl">Ventas</div><div class="kv">${RD(ventas)}</div></div>
+      <div class="card kpi"><div class="ki">${ico('resultados')}</div><div class="kl">Ganancia bruta</div><div class="kv">${RD(bruta)}</div></div>
+      <div class="card kpi"><div class="ki">${ico('cobrar')}</div><div class="kl">Resultado neto</div><div class="kv" style="color:${neta>=0?'var(--green)':'var(--bad)'}">${RD(neta)}</div><div class="kdelta ${neta>=0?'up':'down'}">${neta>=0?'Ganancia':'Pérdida'} · ${margen}%</div></div>
     </div>
-    <div class="grid2"><div class="card"><h3 class="sec">Estado de resultados</h3>
-      ${row('Ventas',ventas)}${row('(−) Costo de mercancía',costo,'')}${row('= Ganancia bruta',bruta,'t-strong')}${row('(−) Gastos operativos',gastos)}${row('= Resultado neto',neta,'t-strong')}
-    </div><div class="card"><h3 class="sec">Detalle de gastos</h3>
-      ${Object.entries(porCat).sort((a,b)=>b[1]-a[1]).map(([c,v])=>row(c,v)).join('')||'<div class="empty">Sin gastos</div>'}
-    </div></div>`;
+    <div class="grid2">
+      <div class="card"><h3 class="sec">Ventas por mes</h3><div class="bars">${barras}</div></div>
+      <div class="card"><h3 class="sec">¿A dónde va cada peso vendido?</h3><div style="margin-top:8px">${comp}</div></div>
+    </div>
+    <div class="grid2" style="margin-top:14px">
+      <div class="card"><h3 class="sec">Estado de resultados</h3>
+        ${row('Ventas',ventas)}${row('(−) Costo de mercancía',costo)}${row('= Ganancia bruta',bruta,'t-strong')}${row('(−) Gastos operativos',gastos)}${row('= Resultado neto',neta,'t-strong')}
+      </div>
+      <div class="card"><h3 class="sec">Gastos por categoría</h3>${ghbars}</div>
+    </div>`;
 }
 
 /* ================== DGII ================== */
@@ -1541,7 +1566,7 @@ async function guardarItemLista(){ const n=$('li_nom').value.trim(); if(!n){toas
 
 /* ================== INTELIGENCIA DE PRECIOS ================== */
 async function cargarMercado(){
-  const [m,ped]=await Promise.all([ sb.from('precios_mercado').select('*'), sb.from('pedidos').select('cliente_id,subtotal,estado,clientes(nombre),pedido_lineas(producto_id,cantidad)') ]);
+  const [m,ped]=await Promise.all([ sb.from('precios_mercado').select('*').order('id'), sb.from('pedidos').select('cliente_id,subtotal,estado,clientes(nombre),pedido_lineas(producto_id,cantidad)').order('id') ]);
   state.mercado=m.data||[]; state.pedidosInt=ped.data||[]; render();
 }
 const BUY=['Frescosso Compra','Merca SD','Min. Agricultura'], RET=['Nacional','Jumbo','Sirena'];
@@ -1560,11 +1585,15 @@ function renderInteligencia(){
 }
 function intelComparativa(){
   const cp=AJ.cost_params;
-  return `<div class="note" style="margin-bottom:12px">🟢 ≥${cp.verde}% · 🟡 ${cp.amarillo}-${cp.verde}% · 🔴 &lt;${cp.amarillo}%</div>
-  <div class="tbl-wrap"><table><thead><tr><th>Producto</th><th class="num">Compra</th><th class="num">Merca SD</th><th class="num">Súper</th><th class="num">Costo real</th><th class="num">Sugerido</th><th class="num">Venta</th><th>Margen</th></tr></thead><tbody>
-  ${state.productos.map(p=>{const fc=mPrice(p.id,'Frescosso Compra'),me=mPrice(p.id,'Merca SD'),su=retAvg(p.id),cr=costoReal(p),sg=Math.round(sugerido(cr)),m=margenV(N(p.precio),cr),mi=mInfo(m);
+  const datos=state.productos.map(p=>{const cr=costoReal(p);const m=margenV(N(p.precio),cr);return {p,cr,m,mi:mInfo(m)};});
+  const colorM=mi=>mi.b==='b-ok'?'var(--green)':mi.b==='b-warn'?'var(--warn)':'var(--bad)';
+  const chart=`<div class="card" style="margin-bottom:14px"><h3 class="sec">Margen por producto</h3>
+    ${datos.map(d=>`<div class="hbar-row"><span class="nm">${esc(d.p.nombre)}</span><div class="hbar-track"><div class="hbar-fill" style="width:${Math.max(2,Math.min(100,d.m))}%;background:${colorM(d.mi)}"></div></div><span class="hbar-val">${d.m}%</span></div>`).join('')||'<div class="empty">Sin productos</div>'}</div>`;
+  const tabla=`<div class="tbl-wrap"><table><thead><tr><th>Producto</th><th class="num">Compra</th><th class="num">Merca SD</th><th class="num">Súper</th><th class="num">Costo real</th><th class="num">Sugerido</th><th class="num">Venta</th><th>Margen</th></tr></thead><tbody>
+  ${datos.map(({p,cr,m,mi})=>{const fc=mPrice(p.id,'Frescosso Compra'),me=mPrice(p.id,'Merca SD'),su=retAvg(p.id),sg=Math.round(sugerido(cr));
     return `<tr><td class="t-strong">${esc(p.nombre)}</td><td class="num">${fc!=null?RD(fc):'—'}</td><td class="num">${me!=null?RD(me):'—'}</td><td class="num muted">${su!=null?RD(su):'—'}</td>
-    <td class="num">${RD(cr)}</td><td class="num t-strong" style="color:var(--green)">${RD(sg)}</td><td class="num">${RD(p.precio)}</td><td><span class="badge ${mi.b}">${mi.d} ${m}%</span></td></tr>`;}).join('')}</tbody></table></div>
+    <td class="num">${RD(cr)}</td><td class="num t-strong" style="color:var(--green)">${RD(sg)}</td><td class="num">${RD(p.precio)}</td><td><span class="badge ${mi.b}">${mi.d} ${m}%</span></td></tr>`;}).join('')}</tbody></table></div>`;
+  return `<div class="note" style="margin-bottom:12px">🟢 ≥${cp.verde}% · 🟡 ${cp.amarillo}-${cp.verde}% · 🔴 &lt;${cp.amarillo}%</div>${chart}${tabla}
   <div class="note">Súper es el promedio de Nacional/Jumbo/Sirena: el techo del mercado. El sugerido sale de costo real + utilidad deseada.</div>`;
 }
 function intelSimulador(){
@@ -1594,8 +1623,12 @@ function intelRent(){
   const map={}; (state.pedidosInt||[]).filter(p=>p.estado!=='Cancelado').forEach(p=>{const nom=p.clientes?.nombre||'—';const venta=N(p.subtotal);const costo=(p.pedido_lineas||[]).reduce((s,l)=>s+N(prodById(l.producto_id).costo)*N(l.cantidad),0);map[nom]=map[nom]||{v:0,c:0,n:0};map[nom].v+=venta;map[nom].c+=costo;map[nom].n++;});
   const rows=Object.entries(map).map(([c,o])=>{const g=o.v-o.c;const m=o.v?Math.round(g/o.v*1000)/10:0;return{c,...o,g,m,mi:mInfo(m)};}).sort((a,b)=>b.g-a.g);
   if(!rows.length) return `<div class="card empty">Aún no hay pedidos para calcular rentabilidad.</div>`;
-  return `<div class="tbl-wrap"><table><thead><tr><th>Cliente</th><th class="num">Pedidos</th><th class="num">Ventas</th><th class="num">Costo</th><th class="num">Ganancia</th><th>Margen</th></tr></thead><tbody>
+  const top=rows.slice(0,8); const maxG=Math.max(1,...top.map(r=>r.g));
+  const chart=`<div class="card" style="margin-bottom:14px"><h3 class="sec">Ganancia por cliente</h3>
+    ${top.map(r=>`<div class="hbar-row"><span class="nm">${esc(r.c)}</span><div class="hbar-track"><div class="hbar-fill" style="width:${Math.max(2,r.g/maxG*100)}%"></div></div><span class="hbar-val">${RD(r.g)}</span></div>`).join('')}</div>`;
+  const tabla=`<div class="tbl-wrap"><table><thead><tr><th>Cliente</th><th class="num">Pedidos</th><th class="num">Ventas</th><th class="num">Costo</th><th class="num">Ganancia</th><th>Margen</th></tr></thead><tbody>
   ${rows.map(r=>`<tr><td class="t-strong">${esc(r.c)}</td><td class="num">${r.n}</td><td class="num">${RD(r.v)}</td><td class="num muted">${RD(r.c)}</td><td class="num t-strong" style="color:var(--green)">${RD(r.g)}</td><td><span class="badge ${r.mi.b}">${r.mi.d} ${r.m}%</span></td></tr>`).join('')}</tbody></table></div>`;
+  return chart+tabla;
 }
 function intelScore(){
   const rows=state.proveedores.filter(p=>p.estado==='activo').map(p=>({p,s:provScore(p)})).sort((a,b)=>b.s-a.s);
