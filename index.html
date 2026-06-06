@@ -146,6 +146,36 @@
   .hbar-track{flex:1;height:10px;background:var(--surface2);border-radius:6px;overflow:hidden}
   .hbar-fill{height:100%;background:linear-gradient(90deg,var(--green2),var(--green));border-radius:6px}
   .hbar-val{width:96px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+  /* ---------- MÓVIL: tablas como tarjetas, KPIs compactos ---------- */
+  @media(max-width:720px){
+    .content{padding:16px 13px 50px}
+    .page-h h1{font-size:19px}
+    .page-h p{font-size:12px}
+    .kpis{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+    .kpi{padding:13px 13px 14px}
+    .kpi .kl{font-size:10.5px}
+    .kpi .kv{font-size:18px}
+    .kpi .kd{font-size:11px}
+    .kpi .ki{width:30px;height:30px;top:11px;right:11px}
+    .kpi .ki svg{width:15px;height:15px}
+    .kpi .kdelta{font-size:10.5px}
+    .tbl-filter{max-width:none}
+    /* tabla -> tarjetas apiladas */
+    .tbl-wrap{border:none;background:none;box-shadow:none;border-radius:0;overflow:visible}
+    .tbl-wrap table,.tbl-wrap tbody,.tbl-wrap tr,.tbl-wrap td{display:block;width:100%}
+    .tbl-wrap thead{display:none}
+    .tbl-wrap tbody tr{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow-sm);margin-bottom:11px;padding:5px 2px}
+    .tbl-wrap tbody tr:hover{background:var(--surface)}
+    .tbl-wrap td{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding:7px 14px;border:none;text-align:right;font-size:13px}
+    .tbl-wrap td::before{content:attr(data-label);text-align:left;color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;flex:0 0 38%;white-space:normal}
+    .tbl-wrap td:first-child{display:block;text-align:left;font-size:15px;font-weight:800;border-bottom:1px solid var(--border);padding:8px 14px 9px;margin-bottom:3px}
+    .tbl-wrap td:first-child::before{display:none}
+    .tbl-wrap td .row-actions{justify-content:flex-end;flex-wrap:wrap}
+    .tbl-wrap td:empty{display:none}
+    .tr-total{background:var(--surface2)!important;border:1px solid var(--border);border-radius:12px}
+    .tr-total td{padding:6px 14px;font-weight:700}
+    .tr-total td:first-child{font-size:13px;border:none;padding-bottom:6px;margin:0}
+  }
   /* toast */
   #toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(120px);background:var(--text);color:#fff;padding:13px 20px;border-radius:13px;font-weight:600;font-size:13.5px;box-shadow:var(--shadow);transition:.35s;z-index:100;max-width:90vw;text-align:center}
   #toast.show{transform:translateX(-50%) translateY(0)}
@@ -184,7 +214,7 @@
       <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
         <button class="iconbtn" id="temaBtn" onclick="toggleTema()" title="Cambiar tema" aria-label="Tema"></button>
         <button class="iconbtn" onclick="modalEmpresa()" title="Configuración de empresa" aria-label="Empresa">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 0 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 0 1 0-4h.1A1.6 1.6 0 0 0 2.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 7 2.6h.1A1.6 1.6 0 0 0 8 1.1V1a2 2 0 0 1 4 0v.1A1.6 1.6 0 0 0 15 2.6a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v.1a1.6 1.6 0 0 0 1.5 1H23a2 2 0 0 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></button>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.2 5.2l2.1 2.1M16.7 16.7l2.1 2.1M18.8 5.2l-2.1 2.1M7.3 16.7l-2.1 2.1"/></svg></button>
         <button class="iconbtn" onclick="cerrarSesion()" title="Cerrar sesión" aria-label="Salir">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg></button>
       </div>
@@ -360,6 +390,21 @@ function render(){
     gastos:renderGastos, cobrar:renderCobrar, pagar:renderPagar, resultados:renderResultados, dgii:renderDgii,
     precios:renderLista, inteligencia:renderInteligencia, usuarios:renderUsuarios, rrhh:renderRRHH };
   $('view').innerHTML = (R[state.view]||renderClientes)();
+  labelizeTables();
+}
+/* Convierte cada celda en "etiqueta: valor" para la vista de tarjetas en móvil.
+   Lee los encabezados de cada tabla y los asigna a las celdas del cuerpo. */
+function labelizeTables(){
+  document.querySelectorAll('#view table').forEach(tabla=>{
+    const ths=[...tabla.querySelectorAll('thead th')].map(th=>th.textContent.trim());
+    if(!ths.length) return;
+    tabla.querySelectorAll('tbody tr').forEach(tr=>{
+      const tds=[...tr.children];
+      // filas de totales (con colspan) no se etiquetan
+      if(tds.some(td=>td.hasAttribute('colspan'))){ tr.classList.add('tr-total'); return; }
+      tds.forEach((td,i)=>{ if(ths[i]) td.setAttribute('data-label', ths[i]); });
+    });
+  });
 }
 
 const estBadge=e=>({activo:'b-ok',inactivo:'b-neutral',moroso:'b-bad'}[e]||'b-neutral');
@@ -759,7 +804,7 @@ function renderPedidos(){
     <div id="lista">${tabla}</div>`;
 }
 function listaPedidos(){ return renderPedidos().match(/<div id="lista">([\s\S]*)<\/div>\s*$/)[1]; }
-function pintaLista(fn){ const el=$('lista'); if(el) el.innerHTML=fn(); }
+function pintaLista(fn){ const el=$('lista'); if(el){ el.innerHTML=fn(); labelizeTables(); } }
 
 function modalPedido(){
   state.pedItems=[{prod:(state.productos[0]||{}).id, cant:1}];
