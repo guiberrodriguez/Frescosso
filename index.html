@@ -920,11 +920,23 @@ function pintarNcfBar(){
   const bar=$('ncfBar'); if(!bar) return;
   const p=pedidoActual();
   if(docState.tipo!=='Factura'){ bar.innerHTML=''; return; }
-  if(p.ncf){ bar.innerHTML=`<div class="note" style="margin:0">Comprobante fiscal: <b>${esc(p.ncf)}</b> (${esc(p.ncf_tipo||'')})</div>`; return; }
-  bar.innerHTML=`<div class="note" style="margin:0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    Sin NCF asignado.
-    <select id="ncfSel" style="width:auto;padding:6px 8px"><option value="B02">B02 · Consumo</option><option value="B01">B01 · Crédito Fiscal</option></select>
-    <button class="btn btn-primary btn-sm" onclick="asignarNCFpedido()">Asignar NCF</button></div>`;
+  const ncfHtml = p.ncf
+    ? `Comprobante: <b>${esc(p.ncf)}</b> (${esc(p.ncf_tipo||'')})`
+    : `Sin NCF. <select id="ncfSel" style="width:auto;padding:6px 8px"><option value="B02">B02 · Consumo</option><option value="B01">B01 · Crédito Fiscal</option></select> <button class="btn btn-primary btn-sm" onclick="asignarNCFpedido()">Asignar NCF</button>`;
+  bar.innerHTML=`<div class="note" style="margin:0;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">${ncfHtml}</div>
+    <label style="display:flex;align-items:center;gap:8px;font-weight:700;cursor:pointer"><input type="checkbox" id="ivaChk" ${p.gravado?'checked':''} onchange="aplicarItbisPedido(this.checked)" style="width:auto"> Aplicar ITBIS (${AJ.itbis}%) a esta factura</label>
+  </div>`;
+}
+async function aplicarItbisPedido(on){
+  const p=pedidoActual();
+  const base=Math.max(0, N(p.subtotal)-N(p.descuento));
+  const itbis=on? Math.round(base*AJ.itbis)/100 : 0;
+  const total=base+itbis;
+  const { error } = await sb.from('pedidos').update({ gravado:on, itbis, total }).eq('id',p.id);
+  if(error){ toast('Error: '+error.message,'bad'); return; }
+  p.gravado=on; p.itbis=itbis; p.total=total;   // refleja en memoria
+  toast(on?`ITBIS aplicado: ${RD(itbis)} ✓`:'ITBIS quitado'); renderDoc();
 }
 async function asignarNCFpedido(){
   const p=pedidoActual(); const tipo=$('ncfSel').value;
@@ -994,7 +1006,7 @@ function docHTML(p,tipo){
       ${lineas.map(l=>`<tr><td>${l.n}</td><td class="r">${l.c}</td><td>${l.u}</td><td class="r">${M(l.pu)}</td><td class="r">${M(l.imp)}</td></tr>`).join('')}</tbody></table>
       <div style="margin-left:auto;width:260px;font-size:13px;margin-top:12px">
         <div style="display:flex;justify-content:space-between;padding:4px 0"><span>Subtotal</span><span>${M(sub)}</span></div>
-        ${desc?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>Descuento</span><span>- ${M(desc)}</span></div>`:''}
+        ${desc?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>Descuento${sub>0?` (${Math.round(desc/sub*100)}%)`:''}</span><span>- ${M(desc)}</span></div>`:''}
         ${itbis?`<div style="display:flex;justify-content:space-between;padding:4px 0"><span>ITBIS (${AJ.itbis}%)</span><span>${M(itbis)}</span></div>`:''}
         <div style="display:flex;justify-content:space-between;border-top:2px solid #15231c;margin-top:4px;padding-top:8px;font-weight:800;color:#018837;font-size:16px"><span>TOTAL</span><span>${M(total)}</span></div>
       </div>`;
