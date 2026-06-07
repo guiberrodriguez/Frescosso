@@ -82,6 +82,13 @@
   .est-ok{color:#0f7a3d;background:#e3f6ec;border-color:#cdeeda} .est-info{color:#1f5fc0;background:#e6effc;border-color:#d3e3fb}
   .est-warn{color:#9a6800;background:#fdf2dd;border-color:#f7e6bf} .est-bad{color:#c5343b;background:#fde7e8;border-color:#f7d2d4}
   .est-neutral{color:#5b6b62;background:#eef0f2;border-color:var(--border)}
+  .chk-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px}
+  .chk{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;cursor:pointer}
+  .chk input{width:auto}
+  .fsub{font-size:11px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--green);margin:16px 0 4px;border-top:1px solid var(--border);padding-top:14px}
+  .fsub:first-child{border-top:none;margin-top:0;padding-top:0}
+  .ins-sum{background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:10px;padding:12px 14px;font-size:13.5px;line-height:1.55}
+  @media(max-width:560px){ .chk-grid{grid-template-columns:1fr} }
   .row-actions{display:flex;gap:5px;flex-wrap:wrap}
   .row-actions .btn-sm{padding:5px 9px;font-size:11.5px}
   /* modal */
@@ -254,11 +261,12 @@ const CATS=['Restaurante','Hotel','Comedor','Villa','Catering'];
 
 let state={ view:'dashboard',
   clientes:[], productos:[], proveedores:[], pedidos:[], compras:[], gastos:[],
-  cotizaciones:[], insumos:[], pagos:[], mercado:[], ncf:[], lista:[], usuarios:[], histLista:[], empleados:[], nominas:[], amonestaciones:[],
-  filtroC:'', filtroP:'', filtroV:'', filtroPed:'', filtroCo:'', filtroIn:'', filtroCt:'', filtroG:'', filtroEmp:'',
-  intelTab:'comparativa', sim:null, pedItems:[], cotItems:[], rrhhTab:'colaboradores' };
+  cotizaciones:[], insumos:[], pagos:[], mercado:[], ncf:[], lista:[], usuarios:[], histLista:[], empleados:[], nominas:[], amonestaciones:[], prospectos:[],
+  filtroC:'', filtroP:'', filtroV:'', filtroPed:'', filtroCo:'', filtroIn:'', filtroCt:'', filtroG:'', filtroEmp:'', filtroProsp:'',
+  intelTab:'comparativa', sim:null, pedItems:[], cotItems:[], rrhhTab:'colaboradores', insightTab:'prospectos' };
 const AJ={ itbis:18, cost_params:{transporte:3,merma:2,empaque:1,comision:5,utilidad:25,verde:30,amarillo:18},
   lista_config:{saludo:'¡Buenos días! Le compartimos nuestra lista de precios:',desde:'',hasta:''},
+  zonas:['Bávaro','Friusa','Verón','Punta Cana','Cap Cana'],
   empresa:{nombre:'Agroindustria Frescosso S.R.L.',rnc:'1-31-00000-1',dir:'Verón – Punta Cana, R.D.',tel:'809-555-0100',mail:'ventas@frescosso.do'} };
 
 /* ======================= UTILIDADES ======================= */
@@ -355,6 +363,7 @@ const ICON={
   inteligencia:'<path d="M12 4a4 4 0 0 0-4 4c0 1-1 1.5-1 3a3 3 0 0 0 2 3v2a2 2 0 0 0 4 0M12 4a4 4 0 0 1 4 4c0 1 1 1.5 1 3a3 3 0 0 1-2 3v2a2 2 0 0 1-4 0"/>',
   rrhh:'<circle cx="12" cy="7" r="3.2"/><path d="M5 21c0-4 3-6 7-6s7 2 7 6"/><path d="M9 13l3 3 3-3"/>',
   usuarios:'<circle cx="9" cy="9" r="3.5"/><path d="M3 20c0-3.5 3-5.5 6-5.5s6 2 6 5.5"/><circle cx="18" cy="8" r="2"/><path d="M14 7l6-3"/>',
+  insight:'<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15 15l5 5"/><path d="M8 11.5l1.8 1.8L13 9.5"/>',
 };
 function ico(n,cls=''){ return `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${ICON[n]||''}</svg>`; }
 
@@ -363,7 +372,7 @@ const NAV=[
   ['Catálogos',[['clientes','Clientes','clientes'],['productos','Productos','producto'],['proveedores','Proveedores','proveedor']]],
   ['Operaciones',[['compras','Compras','compra'],['insumos','Insumos','insumo'],['cotizaciones','Cotizaciones','cotizacion']]],
   ['Finanzas',[['gastos','Gastos','gasto'],['cobrar','Por cobrar','cobrar'],['pagar','Por pagar','pagar'],['resultados','Resultados','resultados'],['dgii','DGII','dgii']]],
-  ['Comercial',[['precios','Lista de precios','precios'],['inteligencia','Inteligencia','inteligencia']]],
+  ['Comercial',[['precios','Lista de precios','precios'],['inteligencia','Inteligencia','inteligencia'],['insight','Insight','insight']]],
   ['Administración',[['rrhh','Recursos Humanos','rrhh'],['usuarios','Usuarios','usuarios']]],
 ];
 const TITULOS={}; NAV.forEach(([,items])=>items.forEach(([k,l])=>TITULOS[k]=l));
@@ -402,7 +411,7 @@ async function cargarBase(){
     sb.from('ajustes').select('*')
   ]);
   state.clientes=cli.data||[]; state.productos=prod.data||[]; state.proveedores=prov.data||[];
-  (aj.data||[]).forEach(a=>{ if(a.clave in AJ) AJ[a.clave]= (typeof a.valor==='object'? {...AJ[a.clave],...a.valor} : a.valor); });
+  (aj.data||[]).forEach(a=>{ if(a.clave in AJ){ const v=a.valor; AJ[a.clave]= Array.isArray(v)? v : (v&&typeof v==='object'? {...AJ[a.clave],...v} : v); } });
 }
 async function iniciarSesion(){
   const email=$('lg_email').value.trim(), pass=$('lg_pass').value;
@@ -432,7 +441,8 @@ function go(view){
     pedidos:cargarPedidos, compras:cargarCompras, gastos:cargarGastos, insumos:cargarInsumos,
     cotizaciones:cargarCotizaciones, cobrar:cargarCobrar, pagar:cargarCompras,
     dashboard:cargarDashboard, resultados:cargarFinanzas, dgii:cargarDgii,
-    precios:cargarLista, inteligencia:cargarMercado, usuarios:cargarUsuarios, rrhh:cargarRRHH
+    precios:cargarLista, inteligencia:cargarMercado, usuarios:cargarUsuarios, rrhh:cargarRRHH,
+    insight:cargarInsight
   };
   (L[view]||render)();
 }
@@ -440,7 +450,7 @@ function render(){
   const R={ dashboard:renderDashboard, pedidos:renderPedidos, clientes:renderClientes, productos:renderProductos,
     proveedores:renderProveedores, compras:renderCompras, insumos:renderInsumos, cotizaciones:renderCotizaciones,
     gastos:renderGastos, cobrar:renderCobrar, pagar:renderPagar, resultados:renderResultados, dgii:renderDgii,
-    precios:renderLista, inteligencia:renderInteligencia, usuarios:renderUsuarios, rrhh:renderRRHH };
+    precios:renderLista, inteligencia:renderInteligencia, usuarios:renderUsuarios, rrhh:renderRRHH, insight:renderInsight };
   $('view').innerHTML = (R[state.view]||renderClientes)();
   labelizeTables();
 }
@@ -1847,6 +1857,271 @@ async function guardarAmonest(){
   if(error){toast('Error: '+error.message,'bad');return;} cerrarModal(); toast('Amonestación registrada ✓'); await cargarRRHH();
 }
 async function eliminarAmonest(id){ if(!confirm('¿Eliminar esta amonestación?'))return; const {error}=await sb.from('amonestaciones').delete().eq('id',id); if(error){toast('Error','bad');return;} toast('Eliminada'); await cargarRRHH(); }
+
+/* ======================= INSIGHT (prospección comercial) ======================= */
+const PROSP_TIPO=['Restaurante','Cafetería','Comedor','Food Truck','Catering','Hotel','Otro'];
+const PROSP_FREC=['Diario','2 veces','3 veces','Más de 3 veces'];
+const PROSP_PAGO=['Efectivo','Transferencia','Tarjeta','Crédito semanal','Crédito a 15 días','Crédito a 30 días'];
+const PROSP_VOL=['Menos de RD$5,000','RD$5,000–10,000','RD$10,000–20,000','RD$20,000–50,000','Más de RD$50,000'];
+const PROSP_PRIOR=['Precio','Calidad','Puntualidad','Disponibilidad','Crédito','Atención'];
+const PROSP_DONDE=['Merca Santo Domingo','Mercado local','Distribuidor','Supermercado','Productores','Otro'];
+const PROSP_COMO=['WhatsApp','Llamada','Presencial','Aplicación','Otro'];
+const PROSP_PROBLEMAS=['Llegan tarde','Mala calidad','Cambios constantes de precio','Productos dañados','Entregas incompletas','Falta de disponibilidad','Mala atención','Otro'];
+const ESTADOS_PROSP=['Nuevo','Contactado','Visitado','Cotizado','Cliente','Perdido'];
+const VOL_MID={'Menos de RD$5,000':3500,'RD$5,000–10,000':7500,'RD$10,000–20,000':15000,'RD$20,000–50,000':35000,'Más de RD$50,000':60000};
+const potBadge=p=>({Alto:'b-ok',Medio:'b-warn',Bajo:'b-bad'}[p]||'b-neutral');
+const claseEstProsp=e=>({Cliente:'est-ok',Cotizado:'est-info',Visitado:'est-warn',Contactado:'est-info',Nuevo:'est-neutral',Perdido:'est-bad'}[e]||'est-neutral');
+
+async function cargarInsight(){
+  const { data, error } = await sb.from('prospectos').select('*').order('puntaje',{ascending:false});
+  if(error){ $('view').innerHTML=err(error); return; }
+  state.prospectos=data||[]; render();
+}
+function calcPuntaje(r){
+  let p=VOL_MID[r.volumen]?({3500:10,7500:22,15000:34,35000:44,60000:50}[VOL_MID[r.volumen]]):15;
+  if(r.dispuesto) p+=20;
+  if(r.encuesta&&r.encuesta.abastece_todo) p+=8;
+  p+=Math.min(15,(r.problemas||[]).length*3);
+  p+=({'Diario':6,'Más de 3 veces':6,'3 veces':4,'2 veces':2}[r.frecuencia]||0);
+  return Math.max(0,Math.min(100,Math.round(p)));
+}
+const nivelPot=p=>p>=70?'Alto':p>=45?'Medio':'Bajo';
+function resumenAuto(r){
+  const prob=(r.problemas&&r.problemas[0])?r.problemas[0].toLowerCase():'no especificado';
+  const fac=[['la calidad',r.imp_calidad],['la puntualidad',r.imp_puntualidad],['el precio',r.imp_precio],['el crédito',r.imp_credito]].sort((a,b)=>(b[1]||0)-(a[1]||0))[0][0];
+  return `${r.negocio} invierte aproximadamente ${r.volumen||'—'} semanales. Su principal problema es ${prob}. Valora especialmente ${fac}${r.dispuesto?' y estaría dispuesto a probar un nuevo proveedor':''}. Potencial estimado: ${r.potencial}.`;
+}
+function renderInsight(){
+  const tabs=[['prospectos','Prospectos'],['kpis','KPIs'],['intel','Inteligencia'],['comp','Comparativas'],['reportes','Reportes']];
+  const seg=`<div class="seg" style="margin-bottom:14px">${tabs.map(([k,l])=>`<button class="${state.insightTab===k?'on':''}" onclick="insTab('${k}')">${l}</button>`).join('')}</div>`;
+  const cuerpo={prospectos:insProspectos,kpis:insKPIs,intel:insIntel,comp:insComp,reportes:insReportes}[state.insightTab]();
+  const accion = state.insightTab==='prospectos'?'<button class="btn btn-primary" onclick="modalEncuesta(0)">+ Nueva encuesta</button>':'';
+  return `${pageH('Insight','Prospección comercial · encuestas, potencial y oportunidades',accion)}${seg}${cuerpo}`;
+}
+function insTab(t){ state.insightTab=t; render(); }
+
+function insProspectos(){
+  const q=(state.filtroProsp||'').toLowerCase();
+  const rows=state.prospectos.filter(p=>!q||JSON.stringify(p).toLowerCase().includes(q));
+  const filtro=`<div class="tbl-filter"><span class="ico">🔎</span><input placeholder="Filtrar prospectos…" value="${esc(state.filtroProsp||'')}" oninput="state.filtroProsp=this.value;pintaLista(insListaProsp)"></div>`;
+  return `${filtro}<div id="lista">${insListaProsp()}</div>`;
+}
+function insListaProsp(){
+  const q=(state.filtroProsp||'').toLowerCase();
+  const rows=state.prospectos.filter(p=>!q||JSON.stringify(p).toLowerCase().includes(q));
+  if(!rows.length) return `<div class="card empty">${state.prospectos.length?'Sin coincidencias.':'Aún no hay prospectos. Crea la primera encuesta.'}</div>`;
+  return `<div class="tbl-wrap"><table><thead><tr><th>#</th><th>Negocio</th><th>Zona</th><th>Volumen</th><th class="num">Potencial</th><th>Estado</th><th class="na">Acciones</th></tr></thead><tbody>
+  ${rows.map((p,i)=>`<tr>
+    <td class="t-strong">${i+1}</td>
+    <td class="t-strong">${esc(p.negocio)}<div class="muted" style="font-weight:500;font-size:11.5px">${esc(p.tipo||'')}${p.contacto?' · '+esc(p.contacto):''}</div></td>
+    <td>${esc(p.zona||'—')}</td>
+    <td>${esc(p.volumen||'—')}</td>
+    <td class="num"><span class="badge ${potBadge(p.potencial)}">${p.potencial||'—'} · ${p.puntaje||0}</span></td>
+    <td><select class="est-sel ${claseEstProsp(p.estado)}" onchange="cambiarEstadoProsp(${p.id},this.value)">${ESTADOS_PROSP.map(e=>`<option ${e===p.estado?'selected':''}>${e}</option>`).join('')}</select></td>
+    <td><div class="row-actions">
+      <button class="btn btn-ghost btn-sm" onclick="fichaProsp(${p.id})">Ficha</button>
+      <button class="btn btn-ghost btn-sm" onclick="modalEncuesta(${p.id})">Editar</button>
+      <button class="btn btn-ghost btn-sm" onclick="eliminarProsp(${p.id})">Eliminar</button>
+    </div></td></tr>`).join('')}</tbody></table></div>`;
+}
+async function cambiarEstadoProsp(id,estado){
+  const { error } = await sb.from('prospectos').update({estado}).eq('id',id);
+  if(error){ toast('Error: '+error.message,'bad'); return; }
+  const p=state.prospectos.find(x=>x.id===id); if(p) p.estado=estado; toast('Estado: '+estado+' ✓'); render();
+}
+async function eliminarProsp(id){ if(!confirm('¿Eliminar este prospecto?'))return; const {error}=await sb.from('prospectos').delete().eq('id',id); if(error){toast('Error','bad');return;} toast('Eliminado'); await cargarInsight(); }
+
+function modalEncuesta(id){
+  const p=id?state.prospectos.find(x=>x.id===id):null; const e=(p&&p.encuesta)||{};
+  const fT=(id,l,v='',ph='')=>`<div class="field"><label>${l}</label><input id="${id}" value="${esc(v||'')}" placeholder="${ph}"></div>`;
+  const fTA=(id,l,v='')=>`<div class="field"><label>${l}</label><textarea id="${id}" rows="2">${esc(v||'')}</textarea></div>`;
+  const fNum=(id,l,v='')=>`<div class="field"><label>${l}</label><input id="${id}" type="number" value="${v??''}"></div>`;
+  const f10=(id,l,v='')=>`<div class="field"><label>${l} (1–10)</label><input id="${id}" type="number" min="1" max="10" value="${v??''}"></div>`;
+  const fSel=(id,l,opts,v='')=>`<div class="field"><label>${l}</label><select id="${id}"><option value=""></option>${opts.map(o=>`<option ${o===v?'selected':''}>${o}</option>`).join('')}</select></div>`;
+  const fYN=(id,l,v)=>`<div class="field"><label>${l}</label><select id="${id}"><option value="">—</option><option value="si" ${v===true?'selected':''}>Sí</option><option value="no" ${v===false?'selected':''}>No</option></select></div>`;
+  const fChks=(cls,l,opts,sel=[])=>`<div class="field"><label>${l}</label><div class="chk-grid">${opts.map(o=>`<label class="chk"><input type="checkbox" class="${cls}" value="${esc(o)}" ${sel.includes(o)?'checked':''}> ${o}</label>`).join('')}</div></div>`;
+  const zonaSel=`<div class="field"><label>Zona</label><div style="display:flex;gap:6px"><select id="in_zona" style="flex:1"><option value=""></option>${AJ.zonas.map(z=>`<option ${p&&p.zona===z?'selected':''}>${z}</option>`).join('')}</select><button class="btn btn-ghost btn-sm" type="button" onclick="agregarZonaInsight()">+ Zona</button></div></div>`;
+  openModal(p?'Editar encuesta':'Nueva encuesta de visita',`
+    <div class="fsub">A · Información general</div>
+    ${fT('in_negocio','Nombre del negocio',p?.negocio,'Ej: Restaurante La Terraza')}
+    <div class="frow">${fSel('in_tipo','Tipo de negocio',PROSP_TIPO,p?.tipo||'')}${fT('in_contacto','Encargado de compras',p?.contacto)}</div>
+    <div class="frow">${fT('in_tel','Teléfono',p?.tel)}${fT('in_whatsapp','WhatsApp',p?.whatsapp)}</div>
+    <div class="frow">${fT('in_direccion','Dirección',p?.direccion)}${zonaSel}</div>
+    ${fNum('in_anos','Años operando',p?.anos_operando)}
+    <div class="fsub">B · Hábitos de compra</div>
+    <div class="frow">${fSel('in_frecuencia','Veces que compra por semana',PROSP_FREC,p?.frecuencia||'')}${fT('in_suplidor','Suplidor actual',p?.suplidor_actual)}</div>
+    ${fChks('in-donde','¿Dónde compra actualmente?',PROSP_DONDE,e.donde||[])}
+    <div class="frow">${fSel('in_como','¿Cómo hace los pedidos?',PROSP_COMO,e.como||'')}${fT('in_anticipacion','Anticipación de pedidos',e.anticipacion)}</div>
+    <div class="fsub">C · Productos</div>
+    ${fTA('in_prod','Los 10 productos que más consume (sepáralos por coma)',p?.productos_top)}
+    <div class="frow">${fT('in_cantidades','Cantidades por semana (aprox)',e.cantidades)}${fT('in_indispensables','Indispensables (nunca faltan)',e.indispensables)}</div>
+    ${fT('in_probcalidad','Productos con más problemas de calidad',e.prob_calidad)}
+    <div class="fsub">D · Suplidores actuales</div>
+    ${fChks('in-prob','Problemas más frecuentes',PROSP_PROBLEMAS,p?.problemas||[])}
+    <div class="frow">${f10('in_imp_punt','Importancia puntualidad',p?.imp_puntualidad)}${f10('in_imp_cal','Importancia calidad',p?.imp_calidad)}${f10('in_imp_pre','Importancia precio',p?.imp_precio)}</div>
+    <div class="fsub">E · Forma de pago</div>
+    <div class="frow">${fSel('in_forma','¿Cómo suele pagar?',PROSP_PAGO,p?.forma_pago||'')}${fT('in_credito','Crédito que le ofrecen',e.credito_ofrecido)}${f10('in_imp_cred','Importancia crédito',p?.imp_credito)}</div>
+    <div class="fsub">F · Entregas</div>
+    <div class="frow">${fT('in_hora','Hora que prefiere recibir',e.hora)}${fNum('in_entregas','Entregas por semana',e.entregas)}</div>
+    <div class="frow">${fYN('in_tardias','¿Problemas con entregas tardías?',e.tardias)}${fYN('in_mismodia','¿Le gustaría recibir el mismo día?',e.mismodia)}${f10('in_imp_fresc','Importancia frescura diaria',p?.imp_frescura)}</div>
+    <div class="fsub">G · Tecnología (¿le gustaría…?)</div>
+    <div class="frow">${fYN('in_tec_wa','Pedidos por WhatsApp',e.tec_wa)}${fYN('in_tec_lista','Lista semanal de precios',e.tec_lista)}${fYN('in_tec_fact','Factura digital',e.tec_fact)}</div>
+    <div class="frow">${fYN('in_tec_app','Consultar facturas en app',e.tec_app)}${fYN('in_tec_web','Pedidos por página web',e.tec_web)}${fYN('in_tec_promo','Alertas/promos de precios',e.tec_promo)}</div>
+    <div class="fsub">H · Relación con un nuevo suplidor</div>
+    <div class="frow">${fYN('in_dispuesto','¿Dispuesto a probar un nuevo proveedor?',p?.dispuesto)}${fSel('in_prioridad','Lo más importante para él',PROSP_PRIOR,p?.prioridad||'')}</div>
+    ${fT('in_quecambiar','¿Qué tendría que hacer un nuevo suplidor para que cambie?',e.que_cambiar)}
+    ${fT('in_errores','Errores que no tolera',e.errores)}
+    <div class="fsub">I · Volumen y potencial</div>
+    <div class="frow">${fSel('in_volumen','Inversión semanal',PROSP_VOL,p?.volumen||'')}${fT('in_diacompra','Día de mayor consumo',p?.dia_compra)}</div>
+    <div class="frow">${fT('in_temporadas','Temporadas altas/bajas',e.temporadas)}${fYN('in_abastece','¿Quiere un proveedor que abastezca todo?',e.abastece_todo)}</div>
+    <div class="fsub">J · Preguntas de oro</div>
+    ${fTA('in_oro1','¿Qué problema tiene hoy con sus suplidores?',e.oro1)}
+    ${fTA('in_oro2','Si pudiera cambiar algo de ellos, ¿qué cambiaría?',e.oro2)}
+    ${fTA('in_oro3','¿Qué tendría que ofrecerle un nuevo suplidor para ganarse su confianza?',e.oro3)}
+    ${fYN('in_pruebapeq','¿Probaría con un primer pedido pequeño?',e.prueba_pequeno)}
+    <div class="fsub">Seguimiento</div>
+    <div class="frow">${fSel('in_estado','Estado',ESTADOS_PROSP,p?.estado||'Nuevo')}${fT('in_notas','Notas',p?.notas)}</div>
+    <div class="note">El potencial, el puntaje y el resumen se calculan solos al guardar.</div>`,
+    `<button class="btn btn-ghost" onclick="cerrarModal()">Cancelar</button>
+     <button class="btn btn-primary" onclick="guardarProspecto(${id||0})">${p?'Actualizar':'Guardar encuesta'}</button>`);
+}
+async function agregarZonaInsight(){
+  const z=(prompt('Nombre de la nueva zona:')||'').trim(); if(!z) return;
+  if(!AJ.zonas.includes(z)) AJ.zonas.push(z);
+  const { error } = await sb.from('ajustes').upsert({clave:'zonas',valor:AJ.zonas});
+  if(error){ toast('Error: '+error.message,'bad'); return; }
+  const sel=$('in_zona'); if(sel){ const o=document.createElement('option'); o.textContent=z; sel.appendChild(o); sel.value=z; }
+  toast('Zona agregada: '+z);
+}
+async function guardarProspecto(id){
+  const v=x=>$(x)?.value.trim();
+  const num=x=>{const n=$(x)?.value; return n===''||n==null?null:Number(n);};
+  const yn=x=>{const val=$(x)?.value; return val==='si'?true:val==='no'?false:null;};
+  const chks=cls=>[...document.querySelectorAll('.'+cls+':checked')].map(e=>e.value);
+  const negocio=v('in_negocio'); if(!negocio){ toast('Escribe el nombre del negocio','bad'); return; }
+  const reg={
+    negocio, tipo:v('in_tipo')||null, contacto:v('in_contacto')||null,
+    tel:v('in_tel')||null, whatsapp:v('in_whatsapp')||null, direccion:v('in_direccion')||null, zona:v('in_zona')||null,
+    anos_operando:num('in_anos'), suplidor_actual:v('in_suplidor')||null,
+    frecuencia:v('in_frecuencia')||null, forma_pago:v('in_forma')||null,
+    volumen:v('in_volumen')||null, dia_compra:v('in_diacompra')||null, productos_top:v('in_prod')||null,
+    imp_puntualidad:num('in_imp_punt'), imp_calidad:num('in_imp_cal'), imp_precio:num('in_imp_pre'),
+    imp_credito:num('in_imp_cred'), imp_frescura:num('in_imp_fresc'),
+    problemas:chks('in-prob'), prioridad:v('in_prioridad')||null, dispuesto:yn('in_dispuesto')===true,
+    estado:v('in_estado')||'Nuevo', notas:v('in_notas')||null, vendedor:state.email||null,
+    encuesta:{
+      donde:chks('in-donde'), como:v('in_como'), anticipacion:v('in_anticipacion'),
+      cantidades:v('in_cantidades'), indispensables:v('in_indispensables'), prob_calidad:v('in_probcalidad'),
+      credito_ofrecido:v('in_credito'), hora:v('in_hora'), entregas:num('in_entregas'),
+      tardias:yn('in_tardias'), mismodia:yn('in_mismodia'),
+      tec_wa:yn('in_tec_wa'), tec_lista:yn('in_tec_lista'), tec_fact:yn('in_tec_fact'),
+      tec_app:yn('in_tec_app'), tec_web:yn('in_tec_web'), tec_promo:yn('in_tec_promo'),
+      que_cambiar:v('in_quecambiar'), errores:v('in_errores'), temporadas:v('in_temporadas'),
+      abastece_todo:yn('in_abastece')===true, oro1:v('in_oro1'), oro2:v('in_oro2'), oro3:v('in_oro3'),
+      prueba_pequeno:yn('in_pruebapeq')
+    }
+  };
+  reg.puntaje=calcPuntaje(reg); reg.potencial=nivelPot(reg.puntaje); reg.resumen=resumenAuto(reg);
+  let error;
+  if(id){ ({error}=await sb.from('prospectos').update(reg).eq('id',id)); }
+  else  { ({error}=await sb.from('prospectos').insert(reg)); }
+  if(error){ toast('Error: '+error.message,'bad'); return; }
+  cerrarModal(); toast(id?'Prospecto actualizado ✓':'Encuesta guardada ✓'); await cargarInsight();
+}
+function fichaProsp(id){
+  const p=state.prospectos.find(x=>x.id===id); if(!p) return; const e=p.encuesta||{};
+  const row=(l,v)=>v?`<div class="legend-row"><span class="muted">${l}</span><span class="t-strong" style="text-align:right">${esc(String(v))}</span></div>`:'';
+  const ynT=v=>v===true?'Sí':v===false?'No':'—';
+  openModal('Ficha · '+esc(p.negocio),`
+    <div class="ins-sum" style="margin-bottom:14px">${esc(p.resumen||resumenAuto(p))}</div>
+    <div class="grid2">
+      <div class="card"><h3 class="sec">Contacto</h3>
+        ${row('Tipo',p.tipo)}${row('Encargado',p.contacto)}${row('Teléfono',p.tel)}${row('WhatsApp',p.whatsapp)}${row('Dirección',p.direccion)}${row('Zona',p.zona)}${row('Años operando',p.anos_operando)}
+      </div>
+      <div class="card"><h3 class="sec">Comercial</h3>
+        ${row('Suplidor actual',p.suplidor_actual)}${row('Volumen semanal',p.volumen)}${row('Frecuencia',p.frecuencia)}${row('Forma de pago',p.forma_pago)}${row('Día de mayor consumo',p.dia_compra)}
+        <div class="legend-row"><span class="muted">Potencial</span><span class="badge ${potBadge(p.potencial)}">${p.potencial||'—'} · ${p.puntaje||0}/100</span></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:14px"><h3 class="sec">Qué valora (1–10)</h3>
+      ${row('Puntualidad',p.imp_puntualidad)}${row('Calidad',p.imp_calidad)}${row('Precio',p.imp_precio)}${row('Crédito',p.imp_credito)}${row('Frescura',p.imp_frescura)}
+      ${row('Prioridad declarada',p.prioridad)}${row('Dispuesto a cambiar',ynT(p.dispuesto))}
+    </div>
+    ${(p.problemas&&p.problemas.length)?`<div class="card" style="margin-top:14px"><h3 class="sec">Problemas detectados</h3><div style="display:flex;gap:6px;flex-wrap:wrap">${p.problemas.map(x=>`<span class="badge b-bad">${esc(x)}</span>`).join('')}</div></div>`:''}
+    ${p.productos_top?`<div class="card" style="margin-top:14px"><h3 class="sec">Productos que más consume</h3><div>${esc(p.productos_top)}</div></div>`:''}
+    <div class="card" style="margin-top:14px"><h3 class="sec">Tecnología que le interesa</h3>
+      ${row('Pedidos por WhatsApp',ynT(e.tec_wa))}${row('Lista de precios',ynT(e.tec_lista))}${row('Factura digital',ynT(e.tec_fact))}${row('Consultar en app',ynT(e.tec_app))}${row('Pedidos web',ynT(e.tec_web))}${row('Promos/alertas',ynT(e.tec_promo))}
+    </div>
+    ${(e.oro1||e.oro2||e.oro3)?`<div class="card" style="margin-top:14px"><h3 class="sec">Preguntas de oro</h3>${row('Problema hoy',e.oro1)}${row('Qué cambiaría',e.oro2)}${row('Para ganar su confianza',e.oro3)}${row('Probaría pedido pequeño',ynT(e.prueba_pequeno))}</div>`:''}`,
+    `<button class="btn btn-ghost" onclick="cerrarModal()">Cerrar</button>
+     <button class="btn btn-primary" onclick="cerrarModal();modalEncuesta(${id})">Editar</button>`);
+}
+
+function insKPIs(){
+  const P=state.prospectos; const n=P.length;
+  if(!n) return '<div class="card empty">Aún no hay encuestas registradas.</div>';
+  const alto=P.filter(p=>p.potencial==='Alto').length, medio=P.filter(p=>p.potencial==='Medio').length, bajo=P.filter(p=>p.potencial==='Bajo').length;
+  const conVol=P.filter(p=>VOL_MID[p.volumen]); const invProm=conVol.length?Math.round(conVol.reduce((a,p)=>a+VOL_MID[p.volumen],0)/conVol.length):0;
+  const pagos={}; P.forEach(p=>{if(p.forma_pago)pagos[p.forma_pago]=(pagos[p.forma_pago]||0)+1;});
+  const pagosOrd=Object.entries(pagos).sort((a,b)=>b[1]-a[1]);
+  const k=(l,v,ic,d,cls)=>`<div class="card kpi"><div class="ki">${ico(ic)}</div><div class="kl">${l}</div><div class="kv">${v}</div>${d?`<div class="kdelta ${cls||''}">${d}</div>`:''}</div>`;
+  return `<div class="kpis">
+      ${k('Entrevistados',n,'insight','','')}
+      ${k('Potencial alto',alto,'inteligencia',n?Math.round(alto/n*100)+'%':'','up')}
+      ${k('Potencial medio',medio,'inteligencia',n?Math.round(medio/n*100)+'%':'','')}
+      ${k('Potencial bajo',bajo,'inteligencia',n?Math.round(bajo/n*100)+'%':'','down')}
+      ${k('Inversión sem. promedio',RD(invProm),'gasto','','')}
+    </div>
+    <div class="card" style="margin-top:4px"><h3 class="sec">Forma de pago preferida</h3>
+      ${pagosOrd.length?pagosOrd.map(([f,c])=>`<div class="hbar-row"><span class="nm">${esc(f)}</span><div class="hbar-track"><div class="hbar-fill" style="width:${c/n*100}%"></div></div><span class="hbar-val">${Math.round(c/n*100)}%</span></div>`).join(''):'<div class="empty">Sin datos</div>'}
+    </div>`;
+}
+function insIntel(){
+  const P=state.prospectos; if(!P.length) return '<div class="card empty">Aún no hay encuestas registradas.</div>';
+  // problemas
+  const prob={}; P.forEach(p=>(p.problemas||[]).forEach(x=>prob[x]=(prob[x]||0)+1));
+  const probOrd=Object.entries(prob).sort((a,b)=>b[1]-a[1]); const maxP=Math.max(1,...probOrd.map(x=>x[1]));
+  // lo que más valoran (suma de importancias)
+  const fac={Calidad:0,Puntualidad:0,Precio:0,Crédito:0};
+  P.forEach(p=>{fac.Calidad+=N(p.imp_calidad);fac.Puntualidad+=N(p.imp_puntualidad);fac.Precio+=N(p.imp_precio);fac.Crédito+=N(p.imp_credito);});
+  const totFac=Object.values(fac).reduce((a,b)=>a+b,0)||1;
+  const facOrd=Object.entries(fac).sort((a,b)=>b[1]-a[1]);
+  // productos
+  const prod={}; P.forEach(p=>(p.productos_top||'').split(/[,\n;]+/).forEach(t=>{const k=t.trim(); if(k){const kk=k.charAt(0).toUpperCase()+k.slice(1).toLowerCase(); prod[kk]=(prod[kk]||0)+1;}}));
+  const prodOrd=Object.entries(prod).sort((a,b)=>b[1]-a[1]).slice(0,10); const maxPr=Math.max(1,...prodOrd.map(x=>x[1]));
+  return `<div class="grid2">
+    <div class="card"><h3 class="sec">Principales problemas detectados</h3>
+      ${probOrd.length?probOrd.map(([x,c])=>`<div class="hbar-row"><span class="nm">${esc(x)}</span><div class="hbar-track"><div class="hbar-fill" style="width:${c/maxP*100}%;background:var(--bad)"></div></div><span class="hbar-val">${c}</span></div>`).join(''):'<div class="empty">Sin datos</div>'}
+    </div>
+    <div class="card"><h3 class="sec">Lo que más valoran</h3>
+      ${facOrd.map(([x,v])=>`<div class="hbar-row"><span class="nm">${x}</span><div class="hbar-track"><div class="hbar-fill" style="width:${v/totFac*100}%"></div></div><span class="hbar-val">${Math.round(v/totFac*100)}%</span></div>`).join('')}
+    </div></div>
+    <div class="card" style="margin-top:14px"><h3 class="sec">Productos más consumidos (ranking)</h3>
+      ${prodOrd.length?prodOrd.map(([x,c],i)=>`<div class="hbar-row"><span class="nm">${i+1}. ${esc(x)}</span><div class="hbar-track"><div class="hbar-fill" style="width:${c/maxPr*100}%"></div></div><span class="hbar-val">${c}</span></div>`).join(''):'<div class="empty">Aún no se registran productos en las encuestas</div>'}
+    </div>`;
+}
+function insComp(){
+  const P=[...state.prospectos].sort((a,b)=>(b.puntaje||0)-(a.puntaje||0)).slice(0,6);
+  if(!P.length) return '<div class="card empty">Aún no hay encuestas para comparar.</div>';
+  const fac=p=>[['Calidad',p.imp_calidad],['Puntualidad',p.imp_puntualidad],['Precio',p.imp_precio],['Crédito',p.imp_credito]].sort((a,b)=>(b[1]||0)-(a[1]||0))[0][0];
+  return `<div class="grid2">${P.map(p=>`<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3 class="sec" style="margin:0">${esc(p.negocio)}</h3><span class="badge ${potBadge(p.potencial)}">${p.potencial||'—'} · ${p.puntaje||0}/100</span></div>
+    <div class="legend-row"><span class="muted">Compra</span><span class="t-strong">${esc(p.volumen||'—')} / sem</span></div>
+    <div class="legend-row"><span class="muted">Problema principal</span><span class="t-strong">${esc((p.problemas&&p.problemas[0])||'—')}</span></div>
+    <div class="legend-row"><span class="muted">Valora más</span><span class="t-strong">${fac(p)}</span></div>
+    <div class="legend-row"><span class="muted">Estado</span><span>${esc(p.estado)}</span></div>
+  </div>`).join('')}</div>`;
+}
+function insReportes(){
+  const P=state.prospectos; if(!P.length) return '<div class="card empty">Aún no hay encuestas registradas.</div>';
+  const grupo=(campo)=>{ const m={}; P.forEach(p=>{const k=p[campo]||'—'; m[k]=(m[k]||0)+1;}); return Object.entries(m).sort((a,b)=>b[1]-a[1]); };
+  const porZona=grupo('zona'), porTipo=grupo('tipo');
+  const volM={}; PROSP_VOL.forEach(v=>volM[v]=0); P.forEach(p=>{if(p.volumen)volM[p.volumen]=(volM[p.volumen]||0)+1;});
+  const volOrd=PROSP_VOL.map(v=>[v,volM[v]]).filter(x=>x[1]>0);
+  const bloque=(titulo,arr)=>{const max=Math.max(1,...arr.map(x=>x[1]));return `<div class="card"><h3 class="sec">${titulo}</h3>${arr.length?arr.map(([k,c])=>`<div class="hbar-row"><span class="nm">${esc(k)}</span><div class="hbar-track"><div class="hbar-fill" style="width:${c/max*100}%"></div></div><span class="hbar-val">${c}</span></div>`).join(''):'<div class="empty">Sin datos</div>'}</div>`;};
+  return `<div class="grid2">${bloque('Prospectos por zona',porZona)}${bloque('Prospectos por tipo',porTipo)}</div>
+    <div style="margin-top:14px">${bloque('Prospectos por volumen semanal',volOrd)}</div>`;
+}
 
 boot();
 </script>
