@@ -89,6 +89,17 @@
   .fsub:first-child{border-top:none;margin-top:0;padding-top:0}
   .ins-sum{background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:10px;padding:12px 14px;font-size:13.5px;line-height:1.55}
   @media(max-width:560px){ .chk-grid{grid-template-columns:1fr} }
+  .card-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .card-h h3{margin:0} .card-link{color:var(--green);font-weight:700;font-size:12.5px;cursor:pointer;background:none;border:none;padding:0}
+  .al-row{display:flex;gap:12px;align-items:center;padding:11px 0;border-bottom:1px solid var(--border)}
+  .al-row:last-child{border-bottom:none}
+  .al-ic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex:0 0 38px}
+  .al-ic svg{width:18px;height:18px}
+  .al-bad{background:#fde7e8;color:#c5343b} .al-warn{background:#fdf2dd;color:#9a6800} .al-ok{background:#e3f6ec;color:#0f7a3d}
+  .al-t{font-weight:700;font-size:13.5px} .al-d{font-size:12px;color:var(--muted);margin-top:1px}
+  .mini-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13.5px}
+  .mini-row:last-child{border-bottom:none}
+  .mini-row .mc{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .row-actions{display:flex;gap:5px;flex-wrap:wrap}
   .row-actions .btn-sm{padding:5px 9px;font-size:11.5px}
   /* modal */
@@ -795,7 +806,7 @@ function filtroBar(id,ph,fn){ return `<div class="tbl-filter"><span>🔎</span><
 /* ================== DASHBOARD ================== */
 async function cargarDashboard(){
   const [ped,gas] = await Promise.all([
-    sb.from('pedidos').select('id,total,estado,fecha').order('id',{ascending:false}),
+    sb.from('pedidos').select('id,numero,total,estado,fecha,cliente_id,clientes(nombre)').order('id',{ascending:false}),
     sb.from('gastos').select('categoria,monto').order('id',{ascending:false})
   ]);
   state.pedidos=ped.data||[]; state.gastos=gas.data||[]; render();
@@ -817,6 +828,25 @@ function renderDashboard(){
   const cats=Object.entries(porCat).sort((a,b)=>b[1]-a[1]).slice(0,7);
   const maxC=Math.max(1,...cats.map(c=>c[1]));
   const hbars=cats.length?cats.map(([c,v])=>`<div class="hbar-row"><span class="nm">${esc(c)}</span><div class="hbar-track"><div class="hbar-fill" style="width:${v/maxC*100}%"></div></div><span class="hbar-val">${RD(v)}</span></div>`).join(''):'<div class="empty">Sin gastos</div>';
+  // pedidos recientes
+  const estB=e=>({Entregado:'b-ok','En ruta':'b-info',Preparando:'b-warn',Confirmado:'b-info',Cancelado:'b-bad'}[e]||'b-neutral');
+  const recientes=state.pedidos.slice(0,5);
+  const recHTML=recientes.length?recientes.map(p=>{const nom=p.clientes?.nombre||clienteById(p.cliente_id)?.nombre||'—';
+    return `<div class="mini-row"><span class="t-strong" style="flex:0 0 56px">#${p.numero||p.id}</span><span class="mc">${esc(nom)}</span><span class="t-strong num" style="flex:0 0 92px">${RD(p.total)}</span><span class="badge ${estB(p.estado)}" style="flex:0 0 auto"><span class="d"></span>${esc(p.estado||'—')}</span></div>`;
+  }).join(''):'<div class="empty">Sin pedidos aún</div>';
+  // alertas (datos reales)
+  const verProd=esAdmin()||puede('productos')||puede('insumos');
+  const verCob=esAdmin()||puede('cobrar');
+  const alertas=[];
+  if(verProd) state.productos.filter(p=>N(p.stock)<N(p.stock_min)).forEach(p=>alertas.push({sev:'bad',ic:'producto',t:`${p.nombre} bajo mínimo`,d:`Quedan ${N(p.stock)} ${p.unidad||''} · mínimo ${N(p.stock_min)}`}));
+  if(verCob) state.clientes.forEach(c=>{const bal=N(c.balance),lim=N(c.limite);
+    if(c.estado==='bloqueado'||c.estado==='moroso') alertas.push({sev:'bad',ic:'clientes',t:`Cliente ${c.estado}`,d:esc(c.nombre)});
+    else if(lim>0&&bal>lim) alertas.push({sev:'bad',ic:'cobrar',t:'Excedió su límite de crédito',d:`${esc(c.nombre)} · ${RD(bal)} de ${RD(lim)}`});
+    else if(lim>0&&bal>=lim*0.8) alertas.push({sev:'warn',ic:'cobrar',t:'Crédito cerca del límite',d:`${esc(c.nombre)} · ${Math.round(bal/lim*100)}% usado`});
+  });
+  alertas.sort((a,b)=>(a.sev==='bad'?0:1)-(b.sev==='bad'?0:1));
+  const alHTML=alertas.length?alertas.slice(0,6).map(a=>`<div class="al-row"><div class="al-ic al-${a.sev}">${ico(a.ic)}</div><div style="min-width:0"><div class="al-t">${a.t}</div><div class="al-d">${a.d}</div></div></div>`).join(''):`<div class="al-row"><div class="al-ic al-ok">${ico("resultados")}</div><div><div class="al-t">Todo en orden</div><div class="al-d">Sin alertas por ahora</div></div></div>`;
+  const verAlertas=verProd||verCob;
   return `${pageH('Inicio','Resumen del negocio · datos en vivo de Supabase')}
     <div class="kpis">
       ${k('Ventas registradas',RD(ventas),ico('gasto'),state.pedidos.length+' pedidos','up')}
@@ -826,6 +856,10 @@ function renderDashboard(){
       ${k('Productos',state.productos.length,ico('producto'),low?`${low} bajo mínimo`:'stock OK',low?'down':'up')}
     </div>
     <div class="grid2">
+      <div class="card"><div class="card-h"><h3 class="sec">Pedidos recientes</h3>${puede('pedidos')?`<button class="card-link" onclick="go('pedidos')">Ver todos →</button>`:''}</div>${recHTML}</div>
+      ${verAlertas?`<div class="card"><div class="card-h"><h3 class="sec">Alertas</h3>${verProd?`<button class="card-link" onclick="go('productos')">Inventario →</button>`:''}</div>${alHTML}</div>`:''}
+    </div>
+    <div class="grid2" style="margin-top:14px">
       <div class="card"><h3 class="sec">Ventas por día</h3><div class="bars">${barras}</div></div>
       ${puede('gastos')?`<div class="card"><h3 class="sec">Gastos por categoría</h3>${hbars}</div>`:''}
     </div>
